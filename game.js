@@ -18,6 +18,19 @@
   const toastEl = document.getElementById("toast");
   const burstEl = document.getElementById("burst");
 
+  /** @type {{
+   *   running: boolean,
+   *   paused: boolean,
+   *   score: number,
+   *   target: string,
+   *   findsInRound: number,
+   *   findsNeeded: number,
+   *   spawnTimer: number | null,
+   *   rafId: number | null,
+   *   lastFrame: number,
+   *   activeLetters: Set<{el: HTMLButtonElement, y: number, speed: number, size: number, letter: string}>,
+   *   speechReady: boolean,
+   * }} */
   const state = {
     running: false,
     paused: false,
@@ -26,7 +39,8 @@
     findsInRound: 0,
     findsNeeded: 4,
     spawnTimer: null,
-    roundTimer: null,
+    rafId: null,
+    lastFrame: 0,
     activeLetters: new Set(),
     speechReady: false,
   };
@@ -50,7 +64,6 @@
   function unlockSpeech() {
     if (!("speechSynthesis" in window)) return;
     state.speechReady = true;
-    // Warm up voices on some mobile browsers after a user gesture.
     window.speechSynthesis.getVoices();
     const warm = new SpeechSynthesisUtterance(" ");
     warm.volume = 0;
@@ -93,7 +106,7 @@
       osc.start(now);
       osc.stop(now + duration);
     } catch {
-      // Audio optional — fine if blocked.
+      // Audio optional.
     }
   }
 
@@ -146,12 +159,32 @@
     setTarget(next);
   }
 
+  function removeLetter(item) {
+    item.el.removeEventListener("pointerdown", item.onPointerDown);
+    item.el.removeEventListener("click", item.onClick);
+    state.activeLetters.delete(item);
+    item.el.remove();
+  }
+
   function clearLetters() {
-    for (const el of [...state.activeLetters]) {
-      el.remove();
+    for (const item of [...state.activeLetters]) {
+      removeLetter(item);
     }
     state.activeLetters.clear();
     playfield.innerHTML = "";
+  }
+
+  function letterSizePx() {
+    const raw = getComputedStyle(document.documentElement).getPropertyValue("--letter-size").trim();
+    const fieldWidth = playfield.getBoundingClientRect().width;
+    if (raw.endsWith("px")) return Math.min(parseFloat(raw), fieldWidth * 0.22);
+    // Fallback when clamp() resolves via computed style on a probe.
+    const probe = document.createElement("div");
+    probe.style.cssText = "position:absolute;visibility:hidden;width:var(--letter-size);height:var(--letter-size)";
+    document.body.appendChild(probe);
+    const size = probe.getBoundingClientRect().width || 72;
+    probe.remove();
+    return Math.min(size, fieldWidth * 0.22);
   }
 
   function spawnLetter() {
@@ -160,10 +193,7 @@
     const fieldRect = playfield.getBoundingClientRect();
     if (fieldRect.width < 40 || fieldRect.height < 40) return;
 
-    const letterSize = Math.min(
-      parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--letter-size")) || 72,
-      fieldRect.width * 0.22
-    );
+    const size = letterSizePx();
 
     // Bias toward the target so toddlers succeed often (~40%).
     const isTarget = Math.random() < 0.4;
@@ -180,76 +210,121 @@
     btn.textContent = letter;
     btn.dataset.letter = letter;
     btn.setAttribute("aria-label", `Letter ${letter}`);
+    btn.style.width = `${size}px`;
+    btn.style.height = `${size}px`;
+    btn.style.fontSize = `${size * 0.58}px`;
 
-    const maxLeft = Math.max(0, fieldRect.width - letterSize);
+    const maxLeft = Math.max(0, fieldRect.width - size);
     const left = Math.random() * maxLeft;
     btn.style.left = `${left}px`;
 
-    const duration = randomInt(4200, 7000);
-    btn.style.animationDuration = `${duration}ms`;
+    // Start just above the playfield so hit-testing matches the visible letter.
+    const startY = -size - 8;
+    btn.style.top = `${startY}px`;
 
-    const onEnd = () => {
-      cleanup();
+    // ~4.2s–7s to cross the playfield.
+    const travel = fieldRect.height + size + 24;
+    const durationMs = randomInt(4200, 7000);
+    const speed = travel / (durationMs / 1000); // px per second
+
+    const item = {
+      el: btn,
+      y: startY,
+      speed,
+      size,
+      letter,
+      onPointerDown: null,
+      onClick: null,
     };
 
-    const cleanup = () => {
-      btn.removeEventListener("animationend", onEnd);
-      btn.removeEventListener("pointerdown", onPointerDown);
-      state.activeLetters.delete(btn);
-      btn.remove();
-    };
-
-    const onPointerDown = (event) => {
+    const handle = (event) => {
       event.preventDefault();
       event.stopPropagation();
-      handleTap(btn, letter, event.clientX, event.clientY);
+      const x = event.clientX ?? (event.touches && event.touches[0] && event.touches[0].clientX) ?? 0;
+      const y = event.clientY ?? (event.touches && event.touches[0] && event.touches[0].clientY) ?? 0;
+      handleTap(item, letter, x, y);
     };
 
-    btn.addEventListener("animationend", onEnd);
-    btn.addEventListener("pointerdown", onPointerDown, { passive: false });
+    item.onPointerDown = handle;
+    item.onClick = handle;
+    // pointerdown for touch; click as a reliable fallback for desktop automation/tools.
+    btn.addEventListener("pointerdown", handle, { passive: false });
+    btn.addEventListener("click", handle);
 
     playfield.appendChild(btn);
-    state.activeLetters.add(btn);
+    state.activeLetters.add(item);
   }
 
-  function handleTap(btn, letter, x, y) {
+  function handleTap(item, letter, x, y) {
     if (!state.running || state.paused) return;
-    if (btn.dataset.resolved) return;
-    btn.dataset.resolved = "1";
+    if (item.el.dataset.resolved === "1") return;
 
     if (letter === state.target) {
+      item.el.dataset.resolved = "1";
       state.score += 1;
       state.findsInRound += 1;
       updateScore();
       celebrateSound();
       showBurst(x, y);
-      btn.classList.add("correct");
+      item.el.classList.add("correct");
       speak(randomItem(["Yes!", "Great job!", "You found it!", "Yay!"]), { rate: 1.05 });
 
       setTimeout(() => {
-        btn.remove();
-        state.activeLetters.delete(btn);
+        if (state.activeLetters.has(item)) removeLetter(item);
       }, 380);
 
       if (state.findsInRound >= state.findsNeeded) {
-        showToast(`New letter!`);
+        showToast("New letter!");
         setTimeout(() => pickNewTarget(true), 500);
       }
     } else {
       missSound();
-      btn.classList.add("wrong");
-      btn.dataset.resolved = "";
-      setTimeout(() => btn.classList.remove("wrong"), 360);
-      // Soft nudge — speak the target again so she remembers what to look for.
+      item.el.classList.add("wrong");
+      setTimeout(() => item.el.classList.remove("wrong"), 360);
       speak(`Try the letter ${state.target}`);
+    }
+  }
+
+  function tick(now) {
+    state.rafId = requestAnimationFrame(tick);
+    if (!state.running || state.paused) {
+      state.lastFrame = now;
+      return;
+    }
+
+    const last = state.lastFrame || now;
+    const dt = Math.min(0.05, (now - last) / 1000);
+    state.lastFrame = now;
+
+    const fieldHeight = playfield.getBoundingClientRect().height;
+
+    for (const item of [...state.activeLetters]) {
+      if (item.el.dataset.resolved === "1") continue;
+      item.y += item.speed * dt;
+      item.el.style.top = `${item.y}px`;
+      if (item.y > fieldHeight + 8) {
+        removeLetter(item);
+      }
+    }
+  }
+
+  function startLoop() {
+    if (state.rafId != null) cancelAnimationFrame(state.rafId);
+    state.lastFrame = performance.now();
+    state.rafId = requestAnimationFrame(tick);
+  }
+
+  function stopLoop() {
+    if (state.rafId != null) {
+      cancelAnimationFrame(state.rafId);
+      state.rafId = null;
     }
   }
 
   function scheduleSpawns() {
     clearInterval(state.spawnTimer);
-    const tick = () => {
+    const spawn = () => {
       if (!state.running || state.paused) return;
-      // Keep the sky from getting overcrowded on small screens.
       if (state.activeLetters.size < 8) {
         spawnLetter();
         if (Math.random() < 0.35 && state.activeLetters.size < 8) {
@@ -259,8 +334,8 @@
         }
       }
     };
-    tick();
-    state.spawnTimer = setInterval(tick, 1100);
+    spawn();
+    state.spawnTimer = setInterval(spawn, 1100);
   }
 
   function startGame() {
@@ -274,6 +349,7 @@
     show(playScreen);
     clearLetters();
     pickNewTarget(false);
+    startLoop();
     scheduleSpawns();
   }
 
@@ -281,9 +357,6 @@
     if (!state.running || state.paused) return;
     state.paused = true;
     clearInterval(state.spawnTimer);
-    for (const el of state.activeLetters) {
-      el.style.animationPlayState = "paused";
-    }
     show(pauseScreen);
   }
 
@@ -291,9 +364,7 @@
     if (!state.running || !state.paused) return;
     state.paused = false;
     hide(pauseScreen);
-    for (const el of state.activeLetters) {
-      el.style.animationPlayState = "running";
-    }
+    state.lastFrame = performance.now();
     scheduleSpawns();
   }
 
@@ -301,6 +372,7 @@
     state.running = false;
     state.paused = false;
     clearInterval(state.spawnTimer);
+    stopLoop();
     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
     clearLetters();
     hide(playScreen);
@@ -322,7 +394,6 @@
     targetEl.classList.add("pulse");
   });
 
-  // Prevent scroll / pull-to-refresh while playing on mobile.
   document.addEventListener(
     "touchmove",
     (e) => {
