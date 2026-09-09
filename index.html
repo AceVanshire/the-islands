@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#4BA3D9" />
+    <title>Letter Rain</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Fredoka:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="sky" aria-hidden="true">
+      <div class="sun"></div>
+      <div class="cloud cloud-a"></div>
+      <div class="cloud cloud-b"></div>
+      <div class="cloud cloud-c"></div>
+      <div class="hills"></div>
+    </div>
+
+    <main class="app">
+      <header class="top-bar">
+        <h1 class="brand">Letter Rain</h1>
+        <div class="score-pill" aria-live="polite">
+          <span class="score-label">Stars</span>
+          <span id="score" class="score-value">0</span>
+        </div>
+      </header>
+
+      <section id="start-screen" class="screen start-screen">
+        <p class="tagline">Catch the letter that matches!</p>
+        <button id="start-btn" class="big-btn" type="button">Play</button>
+        <p class="hint">Tap the falling letters with your finger</p>
+      </section>
+
+      <section id="play-screen" class="screen play-screen hidden" aria-live="polite">
+        <div class="target-board">
+          <p class="target-label">Find</p>
+          <button id="target-letter" class="target-letter" type="button" aria-label="Hear the letter again">
+            A
+          </button>
+          <p class="target-help">Tap to hear it again</p>
+        </div>
+        <div id="playfield" class="playfield" role="application" aria-label="Falling letters"></div>
+        <button id="pause-btn" class="icon-btn" type="button" aria-label="Pause">❚❚</button>
+      </section>
+
+      <section id="pause-screen" class="screen overlay-screen hidden">
+        <h2 class="overlay-title">Paused</h2>
+        <button id="resume-btn" class="big-btn" type="button">Keep Playing</button>
+        <button id="home-btn" class="text-btn" type="button">Home</button>
+      </section>
+
+      <div id="burst" class="burst hidden" aria-hidden="true"></div>
+      <div id="toast" class="toast hidden" role="status"></div>
+    </main>
+
+    <script src="game.js"></script>
+  </body>
+</html>
