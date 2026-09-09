@@ -16,7 +16,7 @@
   --white: #ffffff;
   --shadow: rgba(31, 58, 77, 0.18);
   --target-size: clamp(4.5rem, 18vw, 7rem);
-  --letter-size: clamp(3.2rem, 14vw, 5.2rem);
+  --letter-size: clamp(3.6rem, 16vw, 5.8rem);
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
@@ -311,6 +311,8 @@ body {
 }
 
 .target-board {
+  position: relative;
+  z-index: 1;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -318,6 +320,7 @@ body {
   gap: 0.15rem;
   margin-top: 0.25rem;
   animation: pop-in 0.4s cubic-bezier(0.34, 1.4, 0.64, 1) both;
+  pointer-events: none;
 }
 
 .target-label {
@@ -332,6 +335,7 @@ body {
   appearance: none;
   border: none;
   cursor: pointer;
+  pointer-events: auto;
   width: var(--target-size);
   height: var(--target-size);
   border-radius: 28%;
@@ -366,6 +370,7 @@ body {
 
 .playfield {
   position: relative;
+  z-index: 2;
   flex: 1;
   width: 100%;
   min-height: 0;

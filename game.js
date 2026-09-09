@@ -195,8 +195,8 @@
 
     const size = letterSizePx();
 
-    // Bias toward the target so toddlers succeed often (~40%).
-    const isTarget = Math.random() < 0.4;
+    // Bias toward the target so toddlers succeed often (~50%).
+    const isTarget = Math.random() < 0.5;
     let letter = state.target;
     if (!isTarget) {
       do {
@@ -218,13 +218,12 @@
     const left = Math.random() * maxLeft;
     btn.style.left = `${left}px`;
 
-    // Start just above the playfield so hit-testing matches the visible letter.
-    const startY = -size - 8;
+    const startY = 4;
     btn.style.top = `${startY}px`;
 
-    // ~4.2s–7s to cross the playfield.
+    // Slower fall for little kids (~5.5s–9s).
     const travel = fieldRect.height + size + 24;
-    const durationMs = randomInt(4200, 7000);
+    const durationMs = randomInt(5500, 9000);
     const speed = travel / (durationMs / 1000); // px per second
 
     const item = {
@@ -258,6 +257,11 @@
   function handleTap(item, letter, x, y) {
     if (!state.running || state.paused) return;
     if (item.el.dataset.resolved === "1") return;
+
+    // Debounce pointerdown + click on the same gesture.
+    const now = performance.now();
+    if (item.lastTap && now - item.lastTap < 450) return;
+    item.lastTap = now;
 
     if (letter === state.target) {
       item.el.dataset.resolved = "1";
